@@ -83,7 +83,7 @@ jobs:
           
           go build -v -trimpath \
             -tags "$TAGS" \
-            -ldflags "-s -w -X github.com/sagernet/sing-box/constant.Version=${VERSION}" \
+            -ldflags "-s -w -checklinkname=0 -X github.com/sagernet/sing-box/constant.Version=${VERSION}" \
             -o ../sing-box${{ matrix.ext }} \
             ./cmd/sing-box
 
