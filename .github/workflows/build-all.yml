@@ -168,7 +168,14 @@ jobs:
       - name: Rename APK
         run: |
           cd sing-box-for-android/app/build/outputs/apk/other/release
-          mv *.apk "SFA-${{ github.event.inputs.version }}-foss-arm64-v8a.apk"
+          APK_FILE=$(ls *arm64-v8a*.apk | head -n 1)
+          if [ -n "$APK_FILE" ]; then
+            mv "$APK_FILE" "SFA-${{ github.event.inputs.version }}-foss-arm64-v8a.apk"
+            echo "Renamed $APK_FILE to SFA-${{ github.event.inputs.version }}-foss-arm64-v8a.apk"
+          else
+            echo "No APK matching pattern found!"
+            exit 1
+          fi
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -201,7 +208,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ github.event.inputs.version }}
-          name: Sing-box ${{ github.event.inputs.version }}
+          name: ${{ github.event.inputs.version }}
           body: |
             📝 Release Notes
             Fixes and improvements
