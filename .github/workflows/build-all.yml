@@ -168,15 +168,13 @@ jobs:
       - name: Rename APK
         run: |
           cd sing-box-for-android/app/build/outputs/apk/other/release
-          for apk in *arm64-v8a*.apk; do
-            mv "$apk" "SFA-${{ github.event.inputs.version }}-${apk#*-}"
-          done
+          mv *.apk "SFA-${{ github.event.inputs.version }}-foss-arm64-v8a.apk"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: android-apk
-          path: sing-box-for-android/app/build/outputs/apk/other/release/*arm64-v8a*.apk
+          path: sing-box-for-android/app/build/outputs/apk/other/release/*.apk
 
   publish:
     name: Publish Release
@@ -204,6 +202,9 @@ jobs:
         with:
           tag_name: v${{ github.event.inputs.version }}
           name: Sing-box ${{ github.event.inputs.version }}
+          body: |
+            📝 Release Notes
+            Fixes and improvements
           files: dist/*
           draft: false
           prerelease: false
