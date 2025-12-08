@@ -169,9 +169,14 @@ jobs:
         run: |
           cd sing-box-for-android/app/build/outputs/apk/other/release
           APK_FILE=$(ls *arm64-v8a*.apk | head -n 1)
+          TARGET_NAME="SFA-${{ github.event.inputs.version }}-foss-arm64-v8a.apk"
           if [ -n "$APK_FILE" ]; then
-            mv "$APK_FILE" "SFA-${{ github.event.inputs.version }}-foss-arm64-v8a.apk"
-            echo "Renamed $APK_FILE to SFA-${{ github.event.inputs.version }}-foss-arm64-v8a.apk"
+            if [ "$APK_FILE" != "$TARGET_NAME" ]; then
+              mv "$APK_FILE" "$TARGET_NAME"
+              echo "Renamed $APK_FILE to $TARGET_NAME"
+            else
+              echo "APK already has correct name: $APK_FILE"
+            fi
           else
             echo "No APK matching pattern found!"
             exit 1
