@@ -122,10 +122,9 @@ chmod +x "${INSTALL_DIR}/${BINARY_NAME}"
 
 # Create systemd service if systemd exists
 if [ -d "/etc/systemd/system" ]; then
-  if [ ! -f "/etc/systemd/system/sing-box.service" ]; then
-    echo "Creating systemd service..."
-    
-    cat > /etc/systemd/system/sing-box.service << 'HEREDOC'
+  echo "Creating systemd service..."
+  
+  cat > /etc/systemd/system/sing-box.service << 'HEREDOC'
 [Unit]
 Description=sing-box service
 Documentation=https://sing-box.sagernet.org
@@ -153,13 +152,17 @@ Nice=-10
 WantedBy=multi-user.target
 HEREDOC
 
-    mkdir -p /etc/sing-box
-    mkdir -p /var/lib/sing-box
-    systemctl daemon-reload 2>/dev/null || true
-    echo "systemd service created. Enable with: systemctl enable sing-box"
-  else
-    echo "systemd service already exists, skipping..."
+  chmod 644 /etc/systemd/system/sing-box.service
+  
+  if [ ! -s /etc/systemd/system/sing-box.service ]; then
+    echo "Failed to create systemd service file!"
+    exit 1
   fi
+
+  mkdir -p /etc/sing-box
+  mkdir -p /var/lib/sing-box
+  systemctl daemon-reload 2>/dev/null || true
+  echo "systemd service created. Enable with: systemctl enable sing-box"
 fi
 
 # Verify
