@@ -56,7 +56,17 @@ case "$(uname -m)" in
   i386|i686)      arch="386" ;;
 esac
 
-echo "Detected: ${os}-${arch}"
+# Detect libc (for Linux)
+libc_suffix=""
+if [ "$os" = "linux" ]; then
+  if ldd --version 2>&1 | grep -qi "musl"; then
+    libc_suffix="-musl"
+  else
+    libc_suffix="-glibc"
+  fi
+fi
+
+echo "Detected: ${os}-${arch}${libc_suffix}"
 
 if [ "$os" = "unknown" ] || [ "$arch" = "unknown" ]; then
   echo "Unsupported platform: ${os}-${arch}"
@@ -95,7 +105,7 @@ if [ "$os" = "windows" ]; then
   suffix=".exe"
 fi
 
-filename="sing-box-${download_version}-${os}-${arch}${suffix}"
+filename="sing-box-${download_version}-${os}-${arch}${libc_suffix}${suffix}"
 download_url="https://github.com/${REPO}/releases/download/v${download_version}/${filename}"
 
 echo "Downloading $download_url"
