@@ -1,224 +1,244 @@
 name: Build sing-box (Android, Windows, Linux)
 
 on:
-  workflow_dispatch:
-    inputs:
-      sing_box_repo:
-        description: 'sing-box repository'
-        required: true
-        default: 'reF1nd/sing-box'
-      sing_box_branch:
-        description: 'sing-box branch'
-        required: true
-        default: 'reF1nd-dev'
-      version:
-        description: 'Version (e.g. 1.13.0-alpha.27.reF1nd)'
-        required: true
+  workflow_dispatch:
+    inputs:
+      sing_box_repo:
+        description: 'sing-box repository'
+        required: true
+        default: 'reF1nd/sing-box'
+      sing_box_branch:
+        description: 'sing-box branch'
+        required: true
+        default: 'reF1nd-dev'
+      version:
+        description: 'Version (e.g. 1.13.0-alpha.27.reF1nd)'
+        required: true
 
 env:
-  TAGS: 'with_gvisor,with_quic,with_dhcp,with_wireguard,with_utls,with_acme,with_clash_api,with_tailscale,with_ccm,badlinkname,tfogo_checklinkname0'
+  TAGS: 'with_gvisor,with_quic,with_dhcp,with_wireguard,with_utls,with_acme,with_clash_api,with_tailscale,with_ccm,badlinkname,tfogo_checklinkname0'
 
 jobs:
-  build_binary:
-    name: Build binary
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        include:
-          - { os: windows, arch: amd64, goamd64: v3, ext: .exe }
-          - { os: linux, arch: amd64, goamd64: v3, ext: '' }
-    steps:
-      - name: Setup Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: ^1.25.5
-          cache: false
+  build_binary:
+    name: Build binary
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - { os: windows, arch: amd64, goamd64: v3, ext: .exe }
+          - { os: linux, arch: amd64, goamd64: v3, ext: '' }
+    steps:
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ^1.25.5
+          cache: false
 
-      - name: Clone sing-box
-        run: |
-          git clone -b ${{ github.event.inputs.sing_box_branch }} \
-            https://github.com/${{ github.event.inputs.sing_box_repo }}.git \
-            sing-box
-          cd sing-box
-          git fetch --tags https://github.com/SagerNet/sing-box.git --force
+      - name: Clone sing-box
+        run: |
+          git clone -b ${{ github.event.inputs.sing_box_branch }} \
+            https://github.com/${{ github.event.inputs.sing_box_repo }}.git \
+            sing-box
+          cd sing-box
+          git fetch --tags https://github.com/SagerNet/sing-box.git --force
 
-      - name: Set tag
-        run: |
-          cd sing-box
-          git tag v${{ github.event.inputs.version }} -f
+      - name: Set tag
+        run: |
+          cd sing-box
+          git tag v${{ github.event.inputs.version }} -f
 
-      - name: Create platform stub for binary build
-        run: |
-          cd sing-box
-          if [ ! -d "experimental/libbox/platform" ]; then
-            mkdir -p experimental/libbox/platform
-            cat > experimental/libbox/platform/interface.go << 'EOF'
-//go:build !android && !ios
+      - name: Build
+        run: |
+          cd sing-box
+          mkdir -p dist
+          go build -v -trimpath -o dist/sing-box${{ matrix.ext }} \
+            -tags "${TAGS}" \
+            -ldflags '-s -w -buildid= -X github.com/sagernet/sing-box/constant.Version=${{ github.event.inputs.version }} -checklinkname=0' \
+            ./cmd/sing-box
+        env:
+          CGO_ENABLED: '0'
+          GOOS: ${{ matrix.os }}
+          GOARCH: ${{ matrix.arch }}
+          GOAMD64: ${{ matrix.goamd64 }}
 
-package platform
+      - name: Rename
+        run: |
+          cd sing-box/dist
+          mv sing-box${{ matrix.ext }} sing-box-${{ github.event.inputs.version }}-${{ matrix.os }}-${{ matrix.arch }}v3${{ matrix.ext }}
 
-type Interface interface{}
-EOF
-          fi
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: binary-${{ matrix.os }}-${{ matrix.arch }}v3
+          path: sing-box/dist/*
 
-      - name: Build
-        run: |
-          cd sing-box
-          mkdir -p dist
-          go build -v -trimpath -o dist/sing-box${{ matrix.ext }} \
-            -tags "${TAGS}" \
-            -ldflags '-s -w -buildid= -X github.com/sagernet/sing-box/constant.Version=${{ github.event.inputs.version }} -checklinkname=0' \
-            ./cmd/sing-box
-        env:
-          CGO_ENABLED: '0'
-          GOOS: ${{ matrix.os }}
-          GOARCH: ${{ matrix.arch }}
-          GOAMD64: ${{ matrix.goamd64 }}
+  build_android:
+    name: Build Android
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
 
-      - name: Rename
-        run: |
-          cd sing-box/dist
-          mv sing-box${{ matrix.ext }} sing-box-${{ github.event.inputs.version }}-${{ matrix.os }}-${{ matrix.arch }}v3${{ matrix.ext }}
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ^1.25.5
+          cache: false
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: binary-${{ matrix.os }}-${{ matrix.arch }}v3
-          path: sing-box/dist/*
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
 
-  build_android:
-    name: Build Android
-    runs-on: ubuntu-latest
-    steps:
-      - name: Setup Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          java-version: '17'
+      - name: Setup Android NDK
+        id: setup-ndk
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r28
 
-      - name: Setup Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: ^1.25.5
-          cache: false
+      - name: Checkout sing-box
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.event.inputs.sing_box_repo }}
+          ref: ${{ github.event.inputs.sing_box_branch }}
+          path: sing-box
+          fetch-depth: 0
+          submodules: 'recursive'
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+      - name: Fetch upstream tags
+        run: |
+          cd sing-box
+          git fetch --tags https://github.com/SagerNet/sing-box.git --force
 
-      - name: Setup Android NDK
-        id: setup-ndk
-        uses: nttld/setup-ndk@v1
-        with:
-          ndk-version: r28
+      - name: Set tag
+        run: |
+          cd sing-box
+          git tag v${{ github.event.inputs.version }} -f
 
-      - name: Checkout sing-box with submodules
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ github.event.inputs.sing_box_repo }}
-          ref: ${{ github.event.inputs.sing_box_branch }}
-          path: sing-box
-          submodules: 'recursive'
-          fetch-depth: 0
+      - name: Update Android client to compatible version
+        run: |
+          cd sing-box/clients/android
+          git fetch origin dev:dev 2>/dev/null || git fetch origin main:main 2>/dev/null || true
+          git checkout dev 2>/dev/null || git checkout main 2>/dev/null || echo "Using current submodule commit"
 
-      - name: Set tag
-        run: |
-          cd sing-box
-          git fetch --tags https://github.com/SagerNet/sing-box.git --force
-          git tag v${{ github.event.inputs.version }} -f
+      - name: Install gomobile
+        run: |
+          cd sing-box
+          make lib_install
+          echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
 
-      - name: Build libbox.aar
-        run: |
-          cd sing-box
-          make lib_install
-          echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
-          export PATH="$PATH:$(go env GOPATH)/bin"
-          make lib_android
-        env:
-          ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
+      - name: Build libbox.aar
+        run: |
+          cd sing-box
+          export PATH="$PATH:$(go env GOPATH)/bin"
+          make lib_android
+        env:
+          JAVA_HOME: ${{ env.JAVA_HOME }}
+          ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
 
-      - name: Update Android client version
-        run: |
-          cd sing-box
-          go run -v ./cmd/internal/update_android_version --ci
+      - name: Verify libbox.aar
+        run: |
+          cd sing-box
+          if [ ! -f "libbox.aar" ]; then
+            echo "Error: libbox.aar not found!"
+            exit 1
+          fi
+          echo "libbox.aar size: $(ls -lh libbox.aar)"
+          unzip -l libbox.aar | head -50
 
-      - name: Prepare Android client
-        run: |
-          cd sing-box
-          mkdir -p clients/android/app/libs
-          cp libbox.aar clients/android/app/libs/
+      - name: Prepare Android client
+        run: |
+          cd sing-box
+          mkdir -p clients/android/app/libs
+          cp libbox.aar clients/android/app/libs/
 
-      - name: Decode Keystore
-        run: |
-          echo "${{ secrets.RELEASE_KEYSTORE_FILE }}" | base64 -d > sing-box/clients/android/app/release.keystore
+      - name: Update ABI filter
+        run: |
+          cd sing-box/clients/android
+          sed -i '/defaultConfig {/a\        ndk {\n            abiFilters "arm64-v8a"\n        }' app/build.gradle
 
-      - name: Build APK (signed release)
-        run: |
-          cd sing-box/clients/android
-          chmod +x gradlew
-          ./gradlew :app:assembleOtherRelease \
-            -Pandroid.injected.signing.store.file=$(pwd)/app/release.keystore \
-            -Pandroid.injected.signing.store.password="${{ secrets.RELEASE_KEYSTORE_PASSWORD }}" \
-            -Pandroid.injected.signing.key.alias="${{ secrets.RELEASE_KEY_ALIAS }}" \
-            -Pandroid.injected.signing.key.password="${{ secrets.RELEASE_KEY_PASSWORD }}"
-        env:
-          ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
+      - name: Decode Keystore
+        run: |
+          echo "${{ secrets.RELEASE_KEYSTORE_FILE }}" | base64 -d > sing-box/clients/android/app/release.keystore
 
-      - name: Rename APK and Cleanup
-        run: |
-          cd sing-box/clients/android/app/build/outputs/apk/other/release
-          find . -type f -name "*.apk" ! -name "*arm64-v8a*" -delete 2>/dev/null || true
-          APK_FILE=$(ls *arm64-v8a*.apk 2>/dev/null | head -n 1 || ls *.apk 2>/dev/null | head -n 1)
-          TARGET_NAME="SFA-${{ github.event.inputs.version }}-foss-arm64-v8a.apk"
-          if [ -n "$APK_FILE" ]; then
-            if [ "$APK_FILE" != "$TARGET_NAME" ]; then
-              mv "$APK_FILE" "$TARGET_NAME"
-              echo "Renamed $APK_FILE to $TARGET_NAME"
-            else
-              echo "APK already has correct name: $APK_FILE"
-            fi
-          else
-            echo "Error: No APK found!"
-            ls -la
-            exit 1
-          fi
+      - name: Build APK
+        run: |
+          cd sing-box/clients/android
+          
+          VERSION="${{ github.event.inputs.version }}"
+          VERSION_CODE=$(date +%Y%m%d%H)
+          
+          echo "VERSION_NAME=$VERSION" > version.properties
+          echo "VERSION_CODE=$VERSION_CODE" >> version.properties
+          
+          chmod +x gradlew
+          
+          ./gradlew :app:assembleOtherRelease \
+            -Pandroid.injected.signing.store.file=$(pwd)/app/release.keystore \
+            -Pandroid.injected.signing.store.password="${{ secrets.RELEASE_KEYSTORE_PASSWORD }}" \
+            -Pandroid.injected.signing.key.alias="${{ secrets.RELEASE_KEY_ALIAS }}" \
+            -Pandroid.injected.signing.key.password="${{ secrets.RELEASE_KEY_PASSWORD }}"
+        env:
+          JAVA_HOME: ${{ env.JAVA_HOME }}
+          ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: android-apk
-          path: sing-box/clients/android/app/build/outputs/apk/other/release/*.apk
+      - name: Rename APK
+        run: |
+          cd sing-box/clients/android/app/build/outputs/apk/other/release
+          find . -type f -name "*.apk" ! -name "*arm64-v8a*" -delete 2>/dev/null || true
+          APK_FILE=$(ls *arm64-v8a*.apk 2>/dev/null | head -n 1 || ls *.apk 2>/dev/null | head -n 1)
+          TARGET_NAME="SFA-${{ github.event.inputs.version }}-foss-arm64-v8a.apk"
+          if [ -n "$APK_FILE" ]; then
+            if [ "$APK_FILE" != "$TARGET_NAME" ]; then
+              mv "$APK_FILE" "$TARGET_NAME"
+              echo "Renamed $APK_FILE to $TARGET_NAME"
+            else
+              echo "APK already has correct name: $APK_FILE"
+            fi
+          else
+            echo "Error: No APK found!"
+            ls -la
+            exit 1
+          fi
 
-  publish:
-    name: Publish Release
-    needs: [build_binary, build_android]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: dist
-          merge-multiple: true
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          path: sing-box/clients/android/app/build/outputs/apk/other/release/*.apk
 
-      - name: Delete older releases
-        uses: dev-drprasad/delete-older-releases@v0.3.4
-        with:
-          keep_latest: 0
-          delete_tags: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  publish:
+    name: Publish Release
+    needs: [build_binary, build_android]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
 
-      - name: Create Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v${{ github.event.inputs.version }}
-          name: ${{ github.event.inputs.version }}
-          body: |
-            📝 Release Notes
-            Fixes and improvements
-          files: dist/*
-          draft: false
-          prerelease: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Delete older releases
+        uses: dev-drprasad/delete-older-releases@v0.3.4
+        with:
+          keep_latest: 0
+          delete_tags: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ github.event.inputs.version }}
+          name: ${{ github.event.inputs.version }}
+          body: |
+            📝 Release Notes
+            Fixes and improvements
+          files: dist/*
+          draft: false
+          prerelease: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
