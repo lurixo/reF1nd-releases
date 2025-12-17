@@ -16,7 +16,7 @@ on:
         required: true
 
 env:
-  TAGS_BASE: 'with_gvisor,with_quic,with_dhcp,with_wireguard,with_utls,with_acme,with_clash_api,with_tailscale,with_ccm,with_ocm,with_naive_outbound,badlinkname,tfogo_checklinkname0'
+  TAGS_BASE: 'with_gvisor,with_quic,with_dhcp,with_wireguard,with_utls,with_acme,with_clash_api,with_tailscale,with_ccm,with_ocm,badlinkname,tfogo_checklinkname0'
   TAGS_ANDROID: 'with_gvisor,with_quic,with_dhcp,with_wireguard,with_utls,with_acme,with_clash_api,with_tailscale,with_ccm,with_ocm'
 
 jobs:
@@ -43,47 +43,16 @@ jobs:
           cd sing-box
           git tag v${{ github.event.inputs.version }} -f
 
-      - name: Clone cronet-go
-        run: |
-          set -xeuo pipefail
-          CRONET_GO_VERSION=$(cat sing-box/.github/CRONET_GO_VERSION)
-          git init ~/cronet-go
-          git -C ~/cronet-go remote add origin https://github.com/sagernet/cronet-go.git
-          git -C ~/cronet-go fetch --depth=1 origin "$CRONET_GO_VERSION"
-          git -C ~/cronet-go checkout FETCH_HEAD
-          git -C ~/cronet-go submodule update --init --recursive --depth=1
-
-      - name: Cache Chromium toolchain
-        id: cache-chromium-toolchain
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/cronet-go/naiveproxy/src/third_party/llvm-build/Release+Asserts
-            ~/cronet-go/naiveproxy/src/out/sysroot-build
-          key: chromium-toolchain-amd64-glibc-${{ hashFiles('sing-box/.github/CRONET_GO_VERSION') }}
-
-      - name: Download Chromium toolchain
-        run: |
-          set -xeuo pipefail
-          cd ~/cronet-go
-          go run ./cmd/build-naive --target=linux/amd64 download-toolchain
-
-      - name: Set Chromium toolchain environment
-        run: |
-          set -xeuo pipefail
-          cd ~/cronet-go
-          go run ./cmd/build-naive --target=linux/amd64 env >> $GITHUB_ENV
-
       - name: Build
         run: |
           cd sing-box
           mkdir -p dist
           go build -v -trimpath -o dist/sing-box \
-            -tags "${TAGS_BASE}" \
+            -tags "${TAGS_BASE},with_purego" \
             -ldflags '-s -buildid= -X github.com/sagernet/sing-box/constant.Version=${{ github.event.inputs.version }} -checklinkname=0' \
             ./cmd/sing-box
         env:
-          CGO_ENABLED: '1'
+          CGO_ENABLED: '0'
           GOOS: linux
           GOARCH: amd64
           GOAMD64: v3
@@ -91,12 +60,12 @@ jobs:
       - name: Rename
         run: |
           cd sing-box/dist
-          mv sing-box sing-box-${{ github.event.inputs.version }}-linux-amd64v3-glibc
+          mv sing-box sing-box-${{ github.event.inputs.version }}-linux-amd64v3
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: binary-linux-glibc
+          name: binary-linux
           path: sing-box/dist/*
 
   build_windows:
@@ -125,7 +94,7 @@ jobs:
         run: |
           $TAGS = "${{ env.TAGS_BASE }},with_purego"
           cd sing-box
-          New-Item -ItemType Directory -Force -Path dist
+          mkdir -p dist
           go build -v -trimpath -o dist/sing-box.exe -tags "$TAGS" `
             -ldflags "-s -buildid= -X github.com/sagernet/sing-box/constant.Version=${{ github.event.inputs.version }} -checklinkname=0" `
             ./cmd/sing-box
@@ -134,21 +103,15 @@ jobs:
           GOOS: windows
           GOARCH: amd64
 
-      - name: Extract libcronet.dll
-        run: |
-          $env:CGO_ENABLED = "0"
-          go run -v "github.com/sagernet/cronet-go/cmd/build-naive@latest" extract-lib --target windows/amd64 -o sing-box/dist
-
       - name: Archive
         run: |
           cd sing-box/dist
           $DIR_NAME = "sing-box-${{ github.event.inputs.version }}-windows-amd64v3"
-          New-Item -ItemType Directory -Force -Path $DIR_NAME
+          mkdir $DIR_NAME
           Copy-Item "sing-box.exe" $DIR_NAME
-          Copy-Item "libcronet.dll" $DIR_NAME
           Compress-Archive -Path $DIR_NAME -DestinationPath "$DIR_NAME.zip"
-          Remove-Item -Recurse -Force $DIR_NAME
-          Remove-Item -Force sing-box.exe, libcronet.dll
+          Remove-Item -Recurse $DIR_NAME
+          Remove-Item sing-box.exe
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
